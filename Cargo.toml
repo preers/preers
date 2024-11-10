@@ -4,3 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+tokio = { version = "1", features = ["full"] }
+libp2p = { version = "0", features = ["dns", "serde", "autonat", "dcutr", "ed25519", "identify", "macros", "ping", "quic", "relay", "rendezvous", "tokio", "yamux", "tcp", "noise"] }
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+axum = { version = "0.7" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rusqlite = { version = "0.32", features = ["bundled"] }

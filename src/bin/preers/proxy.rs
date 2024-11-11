@@ -24,7 +24,7 @@ const PROXY_PROTOCOL: StreamProtocol = StreamProtocol::new("/preers-proxy");
 const MAX_MESSAGE_SIZE: usize = 1024;
 
 pub async fn use_service(use_service: UseService, mut control: stream::Control) {
-    let Ok(listener) = TcpListener::bind((Ipv4Addr::LOCALHOST, use_service.port)).await else {
+    let Ok(listener) = TcpListener::bind((Ipv4Addr::LOCALHOST, use_service.forwarder_port)).await else {
         tracing::error!(?use_service, "listen local error");
         return;
     };

@@ -197,8 +197,12 @@ impl DataBase {
     }
 
     pub fn delete_with_id(&mut self, table: &str, id: i64) -> Result<()> {
-        self.conn
-            .execute("DELETE FROM ?1 WHERE rowid = ?2", (table, id))?;
+        tracing::debug!(%id, "delete with id");
+        let sql = format!("DELETE FROM {table} WHERE rowid = ?1");
+        if let Err(error) = self.conn
+            .execute(sql.as_str(), [id]) {
+                tracing::error!(?error, "delete with id error");
+        }
         Ok(())
     }
 

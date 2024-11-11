@@ -1,0 +1,12 @@
+syntax = "proto2";
+
+package proxy.pb;
+
+message UseServiceReq {
+    required string host = 1;
+    required uint32 port = 2;
+}
+
+message UseServiceResp {
+    required bool allowed = 1;
+}

@@ -29,3 +29,4 @@ futures = "0.3.31"
 tokio-util = { version = "0.7.12", features = ["compat"] }
 pin-project = "1.1.7"
 reqwest = { version = "0.12", features = ["json"] }
+tower-http = { version = "0.6.1", features = ["set-header"] }

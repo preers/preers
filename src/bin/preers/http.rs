@@ -17,6 +17,9 @@ use crate::{
     db::{self, AddInner, DelInner},
 };
 
+use axum::http::header::{HeaderValue, ACCESS_CONTROL_ALLOW_ORIGIN};
+use tower_http::set_header::response::SetResponseHeaderLayer;
+
 #[derive(Clone)]
 struct AppState {
     db_tx: Sender<db::Command>,
@@ -59,6 +62,10 @@ pub async fn serve_http(
                 .post(post_use_service)
                 .delete(delete_use_service),
         )
+        .layer(SetResponseHeaderLayer::if_not_present(
+            ACCESS_CONTROL_ALLOW_ORIGIN,
+            HeaderValue::from_static("*"),
+        ))
         .with_state(app_state);
 
     let listener = tokio::net::TcpListener::bind(SocketAddr::new(host, port))

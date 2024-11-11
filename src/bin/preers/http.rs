@@ -17,8 +17,8 @@ use crate::{
     db::{self, AddInner, DelInner},
 };
 
-use axum::http::header::{HeaderValue, ACCESS_CONTROL_ALLOW_ORIGIN};
-use tower_http::set_header::response::SetResponseHeaderLayer;
+use http::Method;
+use tower_http::cors::{Any, CorsLayer};
 
 #[derive(Clone)]
 struct AppState {
@@ -41,6 +41,10 @@ pub async fn serve_http(
     db_tx: Sender<db::Command>,
     app_tx: Sender<app::Command>,
 ) {
+    let cors = CorsLayer::new()
+    .allow_methods(vec![Method::GET, Method::POST, Method::DELETE])
+    .allow_origin(Any);
+
     let app_state = AppState { db_tx, app_tx };
     let app = Router::new()
         .route("/network_info", get(get_info))
@@ -62,10 +66,7 @@ pub async fn serve_http(
                 .post(post_use_service)
                 .delete(delete_use_service),
         )
-        .layer(SetResponseHeaderLayer::if_not_present(
-            ACCESS_CONTROL_ALLOW_ORIGIN,
-            HeaderValue::from_static("*"),
-        ))
+        .layer(cors)
         .with_state(app_state);
 
     let listener = tokio::net::TcpListener::bind(SocketAddr::new(host, port))

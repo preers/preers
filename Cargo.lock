@@ -2788,6 +2788,7 @@ dependencies = [
  "axum",
  "clap",
  "futures",
+ "http 1.1.0",
  "libp2p",
  "libp2p-stream",
  "pin-project",

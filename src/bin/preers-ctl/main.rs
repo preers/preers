@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
+use libp2p::{Multiaddr, PeerId};
 use preers::data::{ProvideService, UseService, Rendezvous, NetworkInfo};
 use preers::DEFAULT_HTTP_PORT;
 use serde::de::DeserializeOwned;
@@ -9,6 +10,8 @@ use serde::Serialize;
 #[command(name = "preers-ctl")]
 #[command(version, about, long_about = None)]
 struct Cli {
+    #[arg(short, long)]
+    port: Option<u16>,
     #[command(subcommand)]
     command: Commands
 }
@@ -29,7 +32,6 @@ enum Commands {
     Add {
         target: Target,
 
-        #[arg(short, long)]
         multiaddr: Option<String>,
 
         #[arg(long)]
@@ -43,6 +45,10 @@ enum Commands {
 
         #[arg(short, long)]
         forwarder_port: Option<u16>,
+    },
+    Del {
+        target: Target,
+        id: i64,
     }
 }
 
@@ -82,8 +88,21 @@ async fn info_cmd() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+async fn del_cmd<T: Serialize>(target: Target, object: T) -> Result<(), Box<dyn std::error::Error>> {
+    let client = reqwest::Client::new();
+    let resp = client.delete(target_to_url(target, DEFAULT_HTTP_PORT))
+        .json(&object)
+        .send()
+        .await?;
+    println!("{resp:#?}");
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let default_multiaddr = Multiaddr::empty();
+    let default_peer_id = PeerId::random();
+
     let cli = Cli::parse();
     match cli.command {
         Commands::Info => info_cmd().await?,
@@ -117,6 +136,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     } else {
                         eprintln!("must provide peer_id, host, port, and forwarder_port")
                     }
+                }
+            }
+        }
+        Commands::Del { target, id } => {
+            match target {
+                Target::Rendezvous => {
+                    del_cmd(target, Rendezvous { id, multiaddr: default_multiaddr }).await?;
+                }
+                Target::Use => {
+                    del_cmd(target, UseService { id, peer_id: default_peer_id, host: "".to_string(), port: 0, forwarder_port: 0}).await?;
+                }
+                Target::Provide => {
+                    del_cmd(target, ProvideService { id, host: "".to_string(), port: 0 }).await?;
                 }
             }
         }

@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Json, State},
+    extract::{Json, State, Query},
     http::StatusCode,
     response::IntoResponse,
     routing::get,
@@ -17,6 +17,7 @@ use crate::{
     db::{self, AddInner, DelInner},
 };
 
+use serde::Deserialize;
 use http::Method;
 use tower_http::cors::{Any, CorsLayer};
 
@@ -31,6 +32,11 @@ enum Error {
     SendError,
     RecvError,
     DBError,
+}
+
+#[derive(Deserialize)]
+struct DeleteQuery {
+    id: i64
 }
 
 type Result<T> = std::result::Result<T, Error>;
@@ -117,12 +123,12 @@ async fn post_rendezvous(
 // TODO: delete rendezvous realtime
 async fn delete_rendezvous(
     State(AppState { db_tx, .. }): State<AppState>,
-    Json(rendezvous): Json<Rendezvous>,
+    Query(params): Query<DeleteQuery>,
 ) -> Result<()> {
     let (resp_tx, resp_rx) = oneshot::channel();
     db_tx
         .send(db::Command::Del {
-            inner: DelInner::Rendezvous(rendezvous.id),
+            inner: DelInner::Rendezvous(params.id),
             resp: resp_tx,
         })
         .await?;
@@ -162,12 +168,12 @@ async fn post_provide_service(
 
 async fn delete_provide_service(
     State(AppState { db_tx, .. }): State<AppState>,
-    Json(provide_service): Json<ProvideService>,
+    Query(params): Query<DeleteQuery>
 ) -> Result<()> {
     let (resp_tx, resp_rx) = oneshot::channel();
     db_tx
         .send(db::Command::Del {
-            inner: DelInner::ProvideService(provide_service.id),
+            inner: DelInner::ProvideService(params.id),
             resp: resp_tx,
         })
         .await?;
@@ -205,12 +211,12 @@ async fn post_use_service(
 
 async fn delete_use_service(
     State(AppState { db_tx, .. }): State<AppState>,
-    Json(use_service): Json<UseService>,
+    Query(params): Query<DeleteQuery>,
 ) -> Result<()> {
     let (resp_tx, resp_rx) = oneshot::channel();
     db_tx
         .send(db::Command::Del {
-            inner: DelInner::UseService(use_service.id),
+            inner: DelInner::UseService(params.id),
             resp: resp_tx,
         })
         .await?;

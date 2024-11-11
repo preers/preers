@@ -1,7 +1,7 @@
 mod app;
-mod data;
 mod db;
 mod http;
+mod proxy;
 
 use app::Network;
 use clap::Parser;
@@ -15,9 +15,11 @@ use std::{
 use tokio::sync::{mpsc, oneshot};
 use tracing_subscriber::EnvFilter;
 
+use preers::DEFAULT_HTTP_PORT;
+
 type Responder<T> = oneshot::Sender<T>;
 
-const DEFAULT_HTTP_PORT: u16 = 9843;
+
 const DEFAULT_P2P_PORT: u16 = 0;
 const MPSC_CHANNEL_SIZE: usize = 256;
 const DEFAULT_DB_PATH: &str = "./preers.db";
@@ -80,11 +82,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .into_iter()
         .map(|x| x.multiaddr)
         .collect();
+
+    // TODO: handle intial rendezvous list and services together
     // Create libp2p application network eventloop
     let mut network = Network::new(keypair, cli.relay, cli.rendezvous, rendezvous_list)?;
 
+    let used_services = db.get_used_services()?;
+    let provided_services = db.get_provided_services()?;
+
     // Initialize network, start listening etc
-    network.init(cli.port)?;
+    network.init(cli.port, used_services, provided_services)?;
 
     println!("Network initialized...");
     let (db_tx, db_rx) = mpsc::channel(MPSC_CHANNEL_SIZE);

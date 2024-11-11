@@ -11,9 +11,9 @@ use tokio::sync::{
     oneshot::{self, error::RecvError},
 };
 
+use preers::data::{NetworkInfo, ProvideService, Rendezvous, UseService};
 use crate::{
     app,
-    data::{NetworkInfo, ProvideService, Rendezvous, UseService},
     db::{self, AddInner, DelInner},
 };
 

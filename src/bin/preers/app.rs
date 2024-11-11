@@ -13,17 +13,16 @@ use libp2p::{
     tcp, yamux, Multiaddr, PeerId, SwarmBuilder,
 };
 
+use libp2p_stream as stream;
+
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::time::Duration;
-use std::{eprintln, format};
 
+use crate::{proxy, MPSC_CHANNEL_SIZE, Responder};
 use tokio::sync::mpsc;
 
-use crate::{
-    data::{NetworkInfo, PeerInfo, ProvideService, UseService},
-    Responder,
-};
+use preers::data::{NetworkInfo, PeerInfo, ProvideService, UseService};
 
 // default rendezvous registration ttl is 2 hours
 const DEFAULT_RDV_REGISTRATION_TTL: Duration = Duration::from_secs(2 * 60 * 60);
@@ -38,6 +37,7 @@ struct Behaviour {
     relay_client: relay::client::Behaviour,
     rendezvous_client: rendezvous::client::Behaviour,
     ping: ping::Behaviour,
+    stream: stream::Behaviour,
     relay: Toggle<relay::Behaviour>,
     rendezvous: Toggle<rendezvous::server::Behaviour>,
 }
@@ -58,9 +58,12 @@ pub(crate) struct Network {
     is_rendezvous: bool,
     pending_relay_connections: HashSet<ConnectionId>,
     pending_rendezvous_connections: HashSet<ConnectionId>,
+    // rendezvous request cookies
     rdv_cookies: HashMap<(PeerId, Option<Namespace>), Cookie>,
     // peers we ever connected to
     peers: HashSet<PeerId>,
+    // channel to handle provide service requests
+    provide_service_tx: mpsc::Sender<ProvideService>,
 }
 
 impl Network {
@@ -90,6 +93,7 @@ impl Network {
                 relay_client: relay_behaviour,
                 rendezvous_client: rendezvous::client::Behaviour::new(keypair.clone()),
                 ping: ping::Behaviour::new(ping::Config::new()),
+                stream: stream::Behaviour::new(),
                 relay: (if is_relay {
                     Some(relay::Behaviour::new(peer_id, relay::Config::default()))
                 } else {
@@ -108,6 +112,14 @@ impl Network {
             .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(2 * 60 * 60)))
             .build();
 
+        let (provide_service_tx, provide_service_rx) = mpsc::channel(MPSC_CHANNEL_SIZE);
+
+        // spawn provide services, handle incoming requests
+        tokio::spawn(proxy::provide_services(
+            provide_service_rx,
+            swarm.behaviour().stream.new_control(),
+        ));
+
         Ok(Self {
             swarm,
             rendezvous_list,
@@ -117,10 +129,16 @@ impl Network {
             pending_rendezvous_connections: Default::default(),
             rdv_cookies: Default::default(),
             peers: Default::default(),
+            provide_service_tx,
         })
     }
 
-    pub fn init(&mut self, port: u16) -> Result<(), Box<dyn Error>> {
+    pub fn init(
+        &mut self,
+        port: u16,
+        used_services: Vec<UseService>,
+        provided_services: Vec<ProvideService>,
+    ) -> Result<(), Box<dyn Error>> {
         let addrs = vec![
             format!("/ip4/0.0.0.0/tcp/{port}"),
             format!("/ip6/::/tcp/{port}"),
@@ -132,9 +150,25 @@ impl Network {
             let multiaddr = addr.parse().unwrap();
             self.swarm.listen_on(multiaddr)?;
         }
+
+        // add known rendezvous
         // TODO: work around the clone here
         for rendezvous in self.rendezvous_list.clone().into_iter() {
             self.add_rendezvous(&rendezvous);
+        }
+
+        // add used services
+        for use_service in used_services {
+            tokio::spawn(proxy::use_service(
+                use_service,
+                self.swarm.behaviour().stream.new_control(),
+            ));
+        }
+
+        // add known provided services
+        for provide_service in provided_services {
+            // TODO handle send error
+            self.provide_service_tx.try_send(provide_service);
         }
         Ok(())
     }
@@ -142,11 +176,14 @@ impl Network {
     pub async fn run(mut self, mut app_rx: mpsc::Receiver<Command>, app_tx: mpsc::Sender<Command>) {
         loop {
             tokio::select! {
-                command = app_rx.recv() => {
-                    self.handle_command(command.expect("command channel not to be dropped"));
+                Some(command) = app_rx.recv() => {
+                    self.handle_command(command);
                 }
                 event = self.swarm.select_next_some() => {
                     self.handle_event(event, &app_tx);
+                }
+                else => {
+                    break;
                 }
             }
         }
@@ -378,8 +415,15 @@ impl Network {
                         .collect(),
                 });
             }
-            _ => {
-                eprintln!("TODO\n");
+            Command::UseService(use_service) => {
+                tokio::spawn(proxy::use_service(
+                    use_service,
+                    self.swarm.behaviour().stream.new_control(),
+                ));
+            }
+            Command::ProvideService(provide_service) => {
+                // TODO: handle send error
+                self.provide_service_tx.try_send(provide_service);
             }
         }
     }

@@ -1,26 +1,26 @@
 use libp2p::{Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
-pub(crate) struct Rendezvous {
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Rendezvous {
     pub id: i64,
     pub multiaddr: Multiaddr,
 }
 
-#[derive(Serialize)]
-pub(crate) struct PeerInfo {
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PeerInfo {
     pub peer_id: PeerId,
     pub connected: bool,
 }
 
-#[derive(Serialize)]
-pub(crate) struct NetworkInfo {
+#[derive(Serialize, Deserialize, Debug)]
+pub struct NetworkInfo {
     pub peer_id: PeerId,
     pub peers: Vec<PeerInfo>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-pub(crate) struct UseService {
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct UseService {
     pub id: i64,
     pub peer_id: PeerId,
     pub host: String,
@@ -28,8 +28,8 @@ pub(crate) struct UseService {
     pub forwarder_port: u16,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-pub(crate) struct ProvideService {
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ProvideService {
     pub id: i64,
     pub host: String,
     pub port: u16,

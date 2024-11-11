@@ -4,13 +4,11 @@ use std::path::Path;
 use std::str::FromStr;
 use tokio::sync::mpsc;
 use tracing;
+use preers::data::{ProvideService, Rendezvous, UseService};
 
 pub use rusqlite::Error;
 
-use crate::{
-    data::{ProvideService, Rendezvous, UseService},
-    Responder,
-};
+use crate::Responder;
 
 pub(crate) enum Command {
     Add {

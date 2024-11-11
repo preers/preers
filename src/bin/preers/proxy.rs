@@ -6,7 +6,7 @@ use libp2p_stream as stream;
 use pin_project::pin_project;
 use std::collections::HashSet;
 use std::io;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::Ipv4Addr;
 use std::result::Result;
 use std::sync::{Arc, Mutex};
 use tokio::io::copy_bidirectional;
@@ -154,17 +154,19 @@ async fn handle_inbound(
         framed_stream
             .send(proto::UseServiceResp { allowed: false })
             .await;
-        framed_stream.close();
+        framed_stream.close().await;
         return;
     }
-    let Ok(socketaddr) = format!("{host}:{port}").parse::<SocketAddr>() else {
-        tracing::warn!(%host, %port, "incoming request not valid");
-        framed_stream
-            .send(proto::UseServiceResp { allowed: false })
-            .await;
-        framed_stream.close();
-        return;
-    };
+//     let parse_result = format!("{host}:{port}").parse::<SocketAddr>();
+//     if parse_result.is_err() {
+//         tracing::warn!(%host, %port, ?parse_result, "incoming request not valid");
+//         framed_stream
+//             .send(proto::UseServiceResp { allowed: false })
+//             .await;
+//         framed_stream.close();
+//         return;
+//     };
+//    let socketaddr = parse_result.unwrap();
     if let Err(error) = framed_stream
         .send(proto::UseServiceResp { allowed: true })
         .await
@@ -173,7 +175,7 @@ async fn handle_inbound(
         return;
     }
     let remote_stream = framed_stream.into_inner();
-    let Ok(mut local_stream) = TcpStream::connect(socketaddr).await else {
+    let Ok(mut local_stream) = TcpStream::connect((host.as_str(), port as u16)).await else {
         tracing::error!("connect to provided service error");
         return;
     };

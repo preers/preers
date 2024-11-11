@@ -195,6 +195,7 @@ impl Network {
                 // NOTE: explicitly add every listening address in order to expose our LAN address
                 // to peers for direct LAN connectivity
                 self.swarm.add_external_address(address.clone());
+                println!("Listening on address: {address}");
                 tracing::info!(%address, "new listen address");
             }
 
@@ -293,7 +294,7 @@ impl Network {
                 // addresses by extend_addresses_through_behaviour
                 if maybe_namespace.is_some_and(|ns| ns == "relay") {
                     for registration in registrations {
-                        app_tx.send(Command::AddRelay(registration.record.peer_id()));
+                        app_tx.try_send(Command::AddRelay(registration.record.peer_id()));
                     }
                 }
             }

@@ -70,6 +70,7 @@ pub async fn serve_http(
 }
 
 async fn get_info(State(AppState { app_tx, .. }): State<AppState>) -> Result<Json<NetworkInfo>> {
+    tracing::debug!("getting network info");
     let (resp_tx, resp_rx) = oneshot::channel();
     app_tx.send(app::Command::GetNetworkInfo(resp_tx)).await?;
     Ok(Json(resp_rx.await?))

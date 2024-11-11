@@ -32,10 +32,10 @@ enum Commands {
         #[arg(short, long)]
         multiaddr: Option<String>,
 
-        #[arg(short, long)]
+        #[arg(long)]
         peer_id: Option<String>,
         
-        #[arg(short, long)]
+        #[arg(short = 'H', long)]
         host: Option<String>,
 
         #[arg(short, long)]
@@ -74,7 +74,7 @@ async fn add_cmd<T: Serialize>(target: Target, object: T) -> Result<(), Box<dyn 
 }
 
 async fn info_cmd() -> Result<(), Box<dyn std::error::Error>> {
-    let resp = reqwest::get(format!("http://localhost:{}/info", DEFAULT_HTTP_PORT))
+    let resp = reqwest::get(format!("http://localhost:{}/network_info", DEFAULT_HTTP_PORT))
         .await?
         .json::<NetworkInfo>()
         .await?;
@@ -89,9 +89,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Info => info_cmd().await?,
         Commands::List { target } => {
             match target {
-                Target::Rendezvous =>  list_cmd::<Rendezvous>(target).await?,
-                Target::Use =>  list_cmd::<UseService>(target).await?,
-                Target::Provide =>  list_cmd::<ProvideService>(target).await?,
+                Target::Rendezvous =>  list_cmd::<Vec<Rendezvous>>(target).await?,
+                Target::Use =>  list_cmd::<Vec<UseService>>(target).await?,
+                Target::Provide =>  list_cmd::<Vec<ProvideService>>(target).await?,
             }
         }
         Commands::Add { target, multiaddr, peer_id, host, port, forwarder_port } => {

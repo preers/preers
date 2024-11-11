@@ -10,6 +10,7 @@ pub use rusqlite::Error;
 
 use crate::Responder;
 
+#[derive(Debug)]
 pub(crate) enum Command {
     Add {
         inner: AddInner,
@@ -24,18 +25,21 @@ pub(crate) enum Command {
     GetProvidedServices(Responder<Result<Vec<ProvideService>>>),
 }
 
+#[derive(Debug)]
 pub(crate) enum AddInner {
     Rendezvous(Multiaddr),
     ProvideService(ProvideService),
     UseService(UseService),
 }
 
+#[derive(Debug)]
 pub(crate) enum DelInner {
     Rendezvous(i64),
     ProvideService(i64),
     UseService(i64),
 }
 
+#[derive(Debug)]
 pub(crate) struct DataBase {
     conn: Connection,
 }
@@ -180,7 +184,7 @@ impl DataBase {
         match cmd {
             AddInner::Rendezvous(multiaddr) => {
                 self.conn.execute(
-                    "INSERT INTO rendezvous (mutiaddr) VALUES (?1)",
+                    "INSERT INTO rendezvous (multiaddr) VALUES (?1)",
                     [multiaddr.to_string()],
                 )?;
                 Ok(self.conn.last_insert_rowid())
@@ -209,6 +213,7 @@ impl DataBase {
     pub fn run(mut self, mut rx: mpsc::Receiver<Command>) {
         loop {
             if let Some(cmd) = rx.blocking_recv() {
+                tracing::debug!(?cmd, "database: received command");
                 match cmd {
                     Command::Add { inner, resp } => {
                         resp.send(self.handle_add(inner));

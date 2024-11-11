@@ -71,10 +71,12 @@ async fn handle_outbound(
         host,
         port: port as u32,
     };
+    tracing::debug!(?msg, "sending request");
     if let Err(error) = framed_stream.send(msg).await {
         tracing::error!(?error, "proxy send initial msg faild");
         return;
     }
+    tracing::debug!("sent request");
     let Some(Ok(proto::UseServiceResp { allowed })) = framed_stream.next().await else {
         tracing::error!("receive use service response error");
         return;
@@ -141,6 +143,7 @@ async fn handle_inbound(
         tracing::error!("receive use service request error");
         return;
     };
+    tracing::debug!(%host, %port, "received use service request from peer");
     if provided_services
         .lock()
         .unwrap()

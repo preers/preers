@@ -142,6 +142,7 @@ impl Network {
         port: u16,
         used_services: Vec<UseService>,
         provided_services: Vec<ProvideService>,
+        maybe_external_address: Option<Multiaddr>,
     ) -> Result<(), Box<dyn Error>> {
         let addrs = vec![
             format!("/ip4/0.0.0.0/tcp/{port}"),
@@ -167,6 +168,10 @@ impl Network {
                 use_service,
                 self.swarm.behaviour().stream.new_control(),
             ));
+        }
+
+        if let Some(external_address) = maybe_external_address {
+            self.swarm.add_external_address(external_address);
         }
 
         // add known provided services
@@ -338,6 +343,9 @@ impl Network {
                 },
             )) => {
                 tracing::info!(%renewal, %relay, "relay accepted our reservation");
+                for rendezvous_point in self.rendezvous_points.clone() {
+                    self.register_at(&rendezvous_point);
+                }
             }
 
             SwarmEvent::Behaviour(BehaviourEvent::Ping(ping::Event {
@@ -348,13 +356,14 @@ impl Network {
                 tracing::debug!(peer_id = %peer, ?rtt, "ping to peer success")
             }
 
-            SwarmEvent::ExternalAddrConfirmed { .. } => {
+            SwarmEvent::ExternalAddrConfirmed { address } => {
                 // TODO work around the clone here
                 for rendezvous_point in self.rendezvous_points.clone() {
                     self.register_at(&rendezvous_point);
                 }
             }
 
+            // TODO learn from identity's external address candidate
             other => {
                 tracing::debug!("Unhandled {:?}", other);
             }

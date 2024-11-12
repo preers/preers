@@ -47,6 +47,9 @@ struct Cli {
 
     #[arg(long, help = "serve as a rendezvous point")]
     rendezvous: bool,
+
+    #[arg(long, help = "external address to this node")]
+    external_address: Option<String>,
 }
 
 #[tokio::main]
@@ -91,7 +94,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let provided_services = db.get_provided_services()?;
 
     // Initialize network, start listening etc
-    network.init(cli.port, used_services, provided_services)?;
+    let maybe_external_address = if let Some(external_address) = cli.external_address {
+        let external_address = external_address.parse().expect("multiaddr should parse");
+        Some(external_address)
+    } else {
+        None
+    };
+    network.init(cli.port, used_services, provided_services, maybe_external_address)?;
 
     println!("Network initialized...");
     let (db_tx, db_rx) = mpsc::channel(MPSC_CHANNEL_SIZE);

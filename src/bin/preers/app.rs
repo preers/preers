@@ -55,6 +55,7 @@ pub(crate) struct Network {
     swarm: Swarm<Behaviour>,
     rendezvous_list: Vec<Multiaddr>,
     rendezvous_points: HashSet<PeerId>,
+    relays: HashSet<PeerId>,
     is_relay: bool,
     is_rendezvous: bool,
     pending_relay_connections: HashSet<ConnectionId>,
@@ -125,6 +126,7 @@ impl Network {
             swarm,
             rendezvous_list,
             rendezvous_points: Default::default(),
+            relays: Default::default(),
             is_relay,
             is_rendezvous,
             pending_relay_connections: Default::default(),
@@ -140,6 +142,7 @@ impl Network {
         port: u16,
         used_services: Vec<UseService>,
         provided_services: Vec<ProvideService>,
+        maybe_external_address: Option<Multiaddr>,
     ) -> Result<(), Box<dyn Error>> {
         let addrs = vec![
             format!("/ip4/0.0.0.0/tcp/{port}"),
@@ -165,6 +168,10 @@ impl Network {
                 use_service,
                 self.swarm.behaviour().stream.new_control(),
             ));
+        }
+
+        if let Some(external_address) = maybe_external_address {
+            self.swarm.add_external_address(external_address);
         }
 
         // add known provided services
@@ -224,19 +231,41 @@ impl Network {
 
                 // TODO: deal with multiple relays
                 // TODO: register our relay address
-                if let Some(_) = self.pending_relay_connections.take(&connection_id) {
-                    tracing::info!(relay = %peer_id, "connected to relay");
+                // if let Some(_) = self.pending_relay_connections.take(&connection_id) {
+                //     tracing::info!(relay = %peer_id, "connected to relay");
 
-                    if let ConnectedPoint::Dialer { address, .. } = endpoint {
-                        if let Err(error) = self
-                            .swarm
-                            .listen_on(address.clone().with(Protocol::P2pCircuit))
-                        {
-                            tracing::error!(relay = %peer_id, %address, ?error, "listen on circuit relay address error");
-                        } else {
-                            tracing::info!(relay = %peer_id, %address, "listening on circuit relay address");
-                        }
-                    }
+                //     if let ConnectedPoint::Dialer { address, .. } = endpoint {
+                //         if let Err(error) = self
+                //             .swarm
+                //             .listen_on(address.clone().with(Protocol::P2pCircuit))
+                //         {
+                //             tracing::error!(relay = %peer_id, %address, ?error, "listen on circuit relay address error");
+                //         } else {
+                //             tracing::info!(relay = %peer_id, %address, "listening on circuit relay address");
+                //         }
+                //     }
+                // }
+                // TODO: do not always listen on
+                if self.relays.get(&peer_id).is_some() {
+                    tracing::info!(%peer_id, "connected to relay");
+                     if let ConnectedPoint::Dialer { address, .. } = endpoint {
+                         let p2p_suffix = Protocol::P2p(peer_id);
+                         let address_with_p2p =
+                                if !address.ends_with(&Multiaddr::empty().with(p2p_suffix.clone())) {
+                                    address.clone().with(p2p_suffix)
+                                } else {
+                                    address.clone()
+                                };
+
+                         if let Err(error) = self
+                             .swarm
+                             .listen_on(address_with_p2p.with(Protocol::P2pCircuit))
+                         {
+                             tracing::error!(relay = %peer_id, %address, ?error, "listen on circuit relay address error");
+                         } else {
+                             tracing::info!(relay = %peer_id, %address, "listen on circuit relay address success");
+                         }
+                     }
                 }
             }
 
@@ -301,7 +330,7 @@ impl Network {
                 // addresses by extend_addresses_through_behaviour
                 if maybe_namespace.is_some_and(|ns| ns == "relay") {
                     for registration in registrations {
-                        app_tx.try_send(Command::AddRelay(registration.record.peer_id()));
+                        self.add_relay(&registration.record.peer_id());
                     }
                 }
             }
@@ -314,6 +343,9 @@ impl Network {
                 },
             )) => {
                 tracing::info!(%renewal, %relay, "relay accepted our reservation");
+                for rendezvous_point in self.rendezvous_points.clone() {
+                    self.register_at(&rendezvous_point);
+                }
             }
 
             SwarmEvent::Behaviour(BehaviourEvent::Ping(ping::Event {
@@ -324,13 +356,14 @@ impl Network {
                 tracing::debug!(peer_id = %peer, ?rtt, "ping to peer success")
             }
 
-            SwarmEvent::ExternalAddrConfirmed { .. } => {
+            SwarmEvent::ExternalAddrConfirmed { address } => {
                 // TODO work around the clone here
                 for rendezvous_point in self.rendezvous_points.clone() {
                     self.register_at(&rendezvous_point);
                 }
             }
 
+            // TODO learn from identity's external address candidate
             other => {
                 tracing::debug!("Unhandled {:?}", other);
             }
@@ -357,17 +390,7 @@ impl Network {
                 self.rendezvous_list.push(rendezvous_point);
             }
             Command::AddRelay(relay) => {
-                if self.is_relay {
-                    return;
-                }
-                let dial_opts = DialOpts::peer_id(relay).build();
-                let connection_id = dial_opts.connection_id();
-                if let Err(error) = self.swarm.dial(dial_opts) {
-                    tracing::error!(?error, %relay, "dial relay server error");
-                } else {
-                    self.pending_relay_connections.insert(connection_id);
-                    tracing::info!(%relay, "dialing relay server");
-                }
+                self.add_relay(&relay);
             }
             Command::TalkToRendezvous(rendezvous_point) => {
                 self.register_at(&rendezvous_point);
@@ -409,6 +432,8 @@ impl Network {
                 });
             }
             Command::UseService(use_service) => {
+                // Immediately learn new peer addresses
+                self.discover_preers();
                 tokio::spawn(proxy::use_service(
                     use_service,
                     self.swarm.behaviour().stream.new_control(),
@@ -446,6 +471,35 @@ impl Network {
             } else {
                 tracing::info!(%rendezvous_point, "registering as relay");
             }
+        }
+    }
+
+    fn discover_preers(&mut self) {
+        // Discover preers
+        for rendezvous_point in self.rendezvous_points.iter() {
+            self.swarm.behaviour_mut().rendezvous_client.discover(
+                Some(rendezvous::Namespace::new("preers".to_string()).unwrap()),
+                self.rdv_cookies
+                    .get(&(*rendezvous_point, Some(Namespace::from_static("preers"))))
+                    .cloned(),
+                None,
+                *rendezvous_point,
+            );
+        }
+    }
+
+    fn add_relay(&mut self, relay: &PeerId) {
+        self.relays.insert(*relay);
+        if self.is_relay {
+            return;
+        }
+        let dial_opts = DialOpts::peer_id(*relay).build();
+        let connection_id = dial_opts.connection_id();
+        if let Err(error) = self.swarm.dial(dial_opts) {
+            tracing::error!(?error, %relay, "dial relay server error");
+        } else {
+            self.pending_relay_connections.insert(connection_id);
+            tracing::info!(%relay, "dialing relay server");
         }
     }
 }

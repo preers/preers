@@ -9,7 +9,7 @@
         <div class="form-row">
           <input v-model="newRendezvous.multiaddr" placeholder="Multiaddr" required />
         </div>
-        <button type="submit">Add Rendezvous</button>
+        <button type="submit">Add</button>
       </form>
     </div>
     <table>
@@ -67,13 +67,11 @@ function checkAndAssignDefaults(data) {
 
 onMounted(async () => {
   try {
-    console.log("restart rez");
+    // console.log("restart rez");
     const response = await proxy.$axios.get('/rendezvous');
     rendezvousList.value = checkAndAssignDefaults(response.data);
-    // loading.value = false;
   } catch (error) {
     console.error('Error fetching rendezvous:', error);
-    // loading.value = false;
   }
 });
 
@@ -83,13 +81,11 @@ async function addRendezvous() {
       id: 0,
       multiaddr: newRendezvous.value.multiaddr
     });
-    console.log(info);
     const response = await proxy.$axios.post('/rendezvous', info, {
       headers: {
         'Content-Type': 'application/json'// 设置请求头，告诉服务器发送的是 JSON 数据
       }
     });
-    console.log(response);
     rendezvousList.value.push(response.data);
     newRendezvous.value.multiaddr = '';
   } catch (error) {
@@ -103,7 +99,6 @@ async function deleteRendezvous(rendezvous) {
       id: rendezvous.id,
       multiaddr: rendezvous.multiaddr
     });
-    console.log(info);
     await proxy.$axios.delete('/rendezvous?id='+rendezvous.id);
     rendezvousList.value = rendezvousList.value.filter(rdz => rdz.id !== rendezvous.id);
   } catch (error) {

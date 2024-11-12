@@ -7,16 +7,12 @@
         <tr>
           <th>Peer ID</th>
           <th>Connected</th>
-          <!-- <th>Action</th> -->
         </tr>
       </thead>
       <tbody>
         <tr v-for="(peer, index) in peers" :key="index">
-          <td>{{ peer.peerid }}</td>
+          <td>{{ peer.peer_id }}</td>
           <td>{{ peer.connected ? 'True' : 'False' }}</td>
-          <!-- <td>
-            <button @click="deletePeer(index)">Delete</button>
-          </td> -->
         </tr>
       </tbody>
     </table>
@@ -24,22 +20,21 @@
 </template>
 
 <script setup>
-import { ref, onMounted, getCurrentInstance } from 'vue';
+import { ref, onMounted, getCurrentInstance, onUnmounted } from 'vue';
 import axios from 'axios';
 
 const peer_id = ref('');
 const peers = ref([]);// 存储获取的 peers 数据
-const newPeer = ref({ peerid: '', connected: 'false' });
 const {proxy} = getCurrentInstance();
 
 // 检查数据格式并赋予默认值的函数
 function checkAndAssignDefaults(data) {
   if (data && Array.isArray(data.peers)) {
+    //console.log(data.peers);
     return {
-      peer_Id: data.peer_id,
+      peer_id: data.peer_id,
       peers: data.peers.map(peer => ({
-        id: peer.id,
-        peerid: peer.peerid,
+        peer_id: peer.peer_id,
         connected: peer.connected,
       })),
     };
@@ -48,18 +43,38 @@ function checkAndAssignDefaults(data) {
   return { peer_Id: '', peers: [] };
 }
 
-// 组件加载时获取数据
-onMounted(async () => {
+// 获取网络信息的函数
+async function fetchNetworkInfo() {
   try {
-    console.log("restart peers");
-    const response = await proxy.$axios.get('/network_info'); // 发送 GET 请求
-    const { peer_Id, peers } = checkAndAssignDefaults(response.data);
-    const data = response.data; // 获取响应数据
-    peer_id.value = peer_Id;
-    peers.value = data.peers; // 将 peers 数据存储到状态中
+    const response = await proxy.$axios.get('/network_info');
+    const data = checkAndAssignDefaults(response.data);
+    peer_id.value = data.peer_id;
+    peers.value = data.peers;
   } catch (error) {
     console.error('Error fetching network info:', error);
   }
+}
+
+// 组件加载时获取数据
+// onMounted(async () => {
+//   try {
+//     // console.log("restart peers");
+//     const response = await proxy.$axios.get('/network_info'); // 发送 GET 请求
+//     const data = checkAndAssignDefaults(response.data);
+//     peer_id.value = data.peer_id;
+//     peers.value = data.peers;
+//   } catch (error) {
+//     console.error('Error fetching network info:', error);
+//   }
+//});
+
+// 在组件挂载时获取数据
+onMounted(() => {
+  fetchNetworkInfo();
+  // 设置定时器，每5秒（5000毫秒）获取一次数据
+  const intervalId = setInterval(fetchNetworkInfo, 5000);
+  // 在组件卸载时清除定时器
+  onUnmounted(() => clearInterval(intervalId));
 });
 
 

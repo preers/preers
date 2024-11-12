@@ -84,7 +84,7 @@ function checkAndAssignDefaults(data) {
 
 onMounted(async () => {
   try {
-    console.log("restart useservices");
+    // console.log("restart useservices");
     const response = await proxy.$axios.get('/use_service');
     services.value = checkAndAssignDefaults(response.data);
   } catch (error) {
@@ -109,7 +109,6 @@ async function addService() {
         'Content-Type': 'application/json'// 设置请求头，告诉服务器发送的是 JSON 数据
       }
     });
-    console.log(response);
     services.value.push(response.data);
     newService.value.host = '';
     newService.value.port = null;
@@ -123,19 +122,6 @@ async function addService() {
 // 修改删除函数以发送被删除条目的详细信息
 async function deleteService(service) {
   try {
-    // const info = JSON.stringify({
-    //     id: service.id,
-    //     peer_id: service.peer_id,
-    //     host: service.host,
-    //     port: service.port,
-    //     forwarder_port: service.forwarder_port,
-    // });
-    // await proxy.$axios.delete('/use_service', {
-    //     data: info,
-    //     headers: {
-    //       'Content-Type': 'application/json'// 设置请求头，告诉服务器发送的是 JSON 数据
-    //     }
-    // });
     await proxy.$axios.delete('/use_service?id='+service.id);
     services.value = services.value.filter(s => s.id !== service.id);
   } catch (error) {

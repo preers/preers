@@ -3,16 +3,13 @@
     <h2>Provide Services</h2>
     <div class="form-container">
       <form @submit.prevent="addService">
-        <!-- <div class="form-row">
-          <input v-model="newService.id" placeholder="ID" required />
-        </div> -->
         <div class="form-row">
           <input v-model="newService.host" placeholder="Host" required />
         </div>
         <div class="form-row">
           <input v-model="newService.port" type="number" placeholder="Port" required />
         </div>
-        <button type="submit">Add Service</button>
+        <button type="submit">Add</button>
       </form>
     </div>
     <table>
@@ -72,7 +69,7 @@ function checkAndAssignDefaults(data) {
 
 onMounted(async () => {
   try {
-    console.log("restart provide services");
+    // console.log("restart provide services");
     const response = await proxy.$axios.get('/provide_service');
     services.value = checkAndAssignDefaults(response.data);
   } catch (error) {
@@ -93,7 +90,7 @@ async function addService() {
         'Content-Type': 'application/json'// 设置请求头，告诉服务器发送的是 JSON 数据
       }
     });
-    console.log(response);
+    //console.log(response);
     // 更新服务列表
     services.value.push(response.data);
     newService.value.host = '';

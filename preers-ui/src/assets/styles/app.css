@@ -95,6 +95,7 @@ body, html {
   border: 1px solid #ccc;
   border-radius: 4px;
   font-size: 16px;
+  height: 6px; /* 设置统一的高度 */
 }
 
 .form-container input[type="radio"] {

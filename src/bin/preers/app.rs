@@ -28,7 +28,7 @@ use preers::data::{NetworkInfo, PeerInfo, ProvideService, UseService};
 const DEFAULT_RDV_REGISTRATION_TTL: Duration = Duration::from_secs(2 * 60 * 60);
 
 // default time interval for rendezvous registration renewal and discovery
-const DEFAULT_RDV_REFRESH: Duration = Duration::from_secs(60 * 60);
+const DEFAULT_RDV_REFRESH: Duration = Duration::from_secs(5 * 60);
 
 #[derive(NetworkBehaviour)]
 struct Behaviour {
@@ -54,6 +54,7 @@ pub(crate) enum Command {
 pub(crate) struct Network {
     swarm: Swarm<Behaviour>,
     rendezvous_list: Vec<Multiaddr>,
+    rendezvous_points: HashSet<PeerId>,
     is_relay: bool,
     is_rendezvous: bool,
     pending_relay_connections: HashSet<ConnectionId>,
@@ -123,6 +124,7 @@ impl Network {
         Ok(Self {
             swarm,
             rendezvous_list,
+            rendezvous_points: Default::default(),
             is_relay,
             is_rendezvous,
             pending_relay_connections: Default::default(),
@@ -215,14 +217,16 @@ impl Network {
             } => {
                 self.peers.insert(peer_id);
                 if let Some(_) = self.pending_rendezvous_connections.take(&connection_id) {
+                    self.rendezvous_points.insert(peer_id.clone());
                     tokio::spawn(talk_to_rendezvous(app_tx.clone(), peer_id));
                     tracing::info!(rendezvous_point = %peer_id, "connected to rendezvous");
                 }
 
+                // TODO: deal with multiple relays
+                // TODO: register our relay address
                 if let Some(_) = self.pending_relay_connections.take(&connection_id) {
                     tracing::info!(relay = %peer_id, "connected to relay");
-                    // TODO: deal with multiple relays
-                    // TODO: register this address with rendezvous
+
                     if let ConnectedPoint::Dialer { address, .. } = endpoint {
                         if let Err(error) = self
                             .swarm
@@ -289,6 +293,9 @@ impl Network {
                         new_cookie.clone(),
                     );
                 }
+                for registration in registrations.iter() {
+                    self.peers.insert(registration.record.peer_id());
+                }
                 // Only dial relay immediately. Peers' addresses are maintained by rendezvous
                 // client behaviour itself, when dialing a peer by id, the swarm will get those
                 // addresses by extend_addresses_through_behaviour
@@ -314,7 +321,14 @@ impl Network {
                 result: Ok(rtt),
                 ..
             })) => {
-                tracing::info!(peer_id = %peer, ?rtt, "ping to peer success")
+                tracing::debug!(peer_id = %peer, ?rtt, "ping to peer success")
+            }
+
+            SwarmEvent::ExternalAddrConfirmed { .. } => {
+                // TODO work around the clone here
+                for rendezvous_point in self.rendezvous_points.clone() {
+                    self.register_at(&rendezvous_point);
+                }
             }
 
             other => {
@@ -356,29 +370,7 @@ impl Network {
                 }
             }
             Command::TalkToRendezvous(rendezvous_point) => {
-                // Register as preers
-                if let Err(error) = self.swarm.behaviour_mut().rendezvous_client.register(
-                    rendezvous::Namespace::from_static("preers"),
-                    rendezvous_point,
-                    Some(DEFAULT_RDV_REGISTRATION_TTL.as_secs()),
-                ) {
-                    tracing::error!(%rendezvous_point, ?error, "failed to register as preers");
-                } else {
-                    tracing::info!(%rendezvous_point, "registering as preers");
-                }
-
-                // Register as relay
-                if self.is_relay {
-                    if let Err(error) = self.swarm.behaviour_mut().rendezvous_client.register(
-                        rendezvous::Namespace::from_static("relay"),
-                        rendezvous_point,
-                        Some(DEFAULT_RDV_REGISTRATION_TTL.as_secs()),
-                    ) {
-                        tracing::error!(%rendezvous_point, ?error, "failed to register as relay");
-                    } else {
-                        tracing::info!(%rendezvous_point, "registering as relay");
-                    }
-                }
+                self.register_at(&rendezvous_point);
 
                 // Discover relay nodes
                 // TODO: use another way to determine if we have to discover relays
@@ -425,6 +417,34 @@ impl Network {
             Command::ProvideService(provide_service) => {
                 // TODO: handle send error
                 self.provide_service_tx.try_send(provide_service);
+            }
+        }
+    }
+
+    fn register_at(&mut self, rendezvous_point: &PeerId) {
+        let external_addresses = self.swarm.external_addresses().collect::<Vec<&Multiaddr>>();
+        tracing::info!(?external_addresses, %rendezvous_point, "registering addresses to rendezvous point");
+        // Register as preers
+        if let Err(error) = self.swarm.behaviour_mut().rendezvous_client.register(
+            rendezvous::Namespace::from_static("preers"),
+            *rendezvous_point,
+            Some(DEFAULT_RDV_REGISTRATION_TTL.as_secs()),
+        ) {
+            tracing::error!(%rendezvous_point, ?error, "failed to register as preers");
+        } else {
+            tracing::info!(%rendezvous_point, "registering as preers");
+        }
+
+        // Register as relay
+        if self.is_relay {
+            if let Err(error) = self.swarm.behaviour_mut().rendezvous_client.register(
+                rendezvous::Namespace::from_static("relay"),
+                *rendezvous_point,
+                Some(DEFAULT_RDV_REGISTRATION_TTL.as_secs()),
+            ) {
+                tracing::error!(%rendezvous_point, ?error, "failed to register as relay");
+            } else {
+                tracing::info!(%rendezvous_point, "registering as relay");
             }
         }
     }

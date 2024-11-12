@@ -1,1 +1,4 @@
 /target
+preers-ui/dist
+preers-ui/node_modules
+preers.db

@@ -45,13 +45,14 @@ pub async fn use_service(use_service: UseService, mut control: stream::Control) 
                     ));
                 } else {
                     tracing::error!(peer_id = %use_service.peer_id, "open stream error");
-                    return;
+                    continue;
                 }
             }
             Err(error) => {
                 tracing::error!(?error, "accept stream error");
                 // TODO just return or handle error and continue?
-                return;
+                // return;
+                continue;
             }
         }
     }

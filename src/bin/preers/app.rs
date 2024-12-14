@@ -323,7 +323,9 @@ impl Network {
                     );
                 }
                 for registration in registrations.iter() {
-                    self.peers.insert(registration.record.peer_id());
+                    if registration.record.peer_id() != *self.swarm.local_peer_id() {
+                        self.peers.insert(registration.record.peer_id());
+                    }
                 }
                 // Only dial relay immediately. Peers' addresses are maintained by rendezvous
                 // client behaviour itself, when dialing a peer by id, the swarm will get those
